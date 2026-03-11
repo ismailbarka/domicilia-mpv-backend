@@ -1,10 +1,12 @@
 require("dotenv").config();
 const express = require("express");
+const cors = require("cors");
 const prisma = require("./prismaClient");
 const cloudinary = require("./cloudinary");
 const upload = require("./upload");
 
 const app = express();
+app.use(cors());
 app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
@@ -111,7 +113,20 @@ app.post("/providers/seed", async (req, res) => {
   const dummyImages = [
     "https://res.cloudinary.com/doufu6atn/image/upload/v1771604302/providers/onz6j6yghvj0gbadd1ff.jpg",
     "https://res.cloudinary.com/doufu6atn/image/upload/v1771604384/providers/bismtgx4bajrzycshthn.jpg",
-    "https://res.cloudinary.com/doufu6atn/image/upload/v1771604132/providers/hehcsyebm6wt2km0ow3y.jpg"
+    "https://res.cloudinary.com/doufu6atn/image/upload/v1771604132/providers/hehcsyebm6wt2km0ow3y.jpg",
+  ];
+
+  const moroccanFirstNames = [
+    "Youssef", "Amine", "Mehdi", "Hassan", "Karim", "Omar", "Tariq", "Yassine", "Anas", "Hamza",
+    "Fatima", "Khadija", "Amina", "Salma", "Meryem", "Sara", "Imane", "Hajar", "Zineb", "Noura",
+    "Rachid", "Mustapha", "Khalid", "Brahim", "Ayoub", "Ilyas", "Bilal", "Adel", "Hicham", "Said",
+    "Sanae", "Najat", "Hanane", "Latifa", "Houda", "Leila", "Samira", "Hasna", "Nadia", "Asmae"
+  ];
+
+  const moroccanLastNames = [
+    "Alaoui", "Amrani", "Berrada", "Chraibi", "El Fassi", "Bennani", "Tahiri", "Tazi", "Idrissi", "Lahlou",
+    "Benali", "El Amrani", "Benjelloun", "El Ouazzani", "El Idrissi", "Benkirane", "El Mansouri", "El Hachimi",
+    "Zeroual", "Mansouri", "Benmoussa", "El Asri", "Jazouli", "Filali", "El Mahdi", "Abou", "Zidane", "Saadi"
   ];
 
   const centerLat = 33.0637382;
@@ -125,16 +140,20 @@ app.post("/providers/seed", async (req, res) => {
   const providers = [];
   for (let i = 1; i <= 50; i++) {
     // Random offset ~1km range (0.01 degrees approx)
-    const latOffset = (Math.random() - 0.5) * 0.001;
-    const lngOffset = (Math.random() - 0.5) * 0.001;
+    const latOffset = (Math.random() - 0.5) * 0.005;
+    const lngOffset = (Math.random() - 0.5) * 0.005;
     
     const category = categories[Math.floor(Math.random() * categories.length)];
     const photoUrl = dummyImages[Math.floor(Math.random() * dummyImages.length)];
 
+    const firstName = moroccanFirstNames[Math.floor(Math.random() * moroccanFirstNames.length)];
+    const lastName = moroccanLastNames[Math.floor(Math.random() * moroccanLastNames.length)];
+    const fullName = `${firstName} ${lastName}`;
+
     providers.push({
-      name: `Dummy Provider ${i}`,
+      name: fullName,
       phone: `+2126${Math.floor(10000000 + Math.random() * 90000000)}`,
-      description: `Description for dummy provider ${i} specializing in ${category.name}`,
+      description: `Professional ${category.name} services provided by ${fullName}. Reliable and experienced.`,
       latitude: centerLat + latOffset,
       longitude: centerLng + lngOffset,
       photoUrl,
