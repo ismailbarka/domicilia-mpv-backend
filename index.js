@@ -12,8 +12,13 @@ app.use(express.json());
 const PORT = process.env.PORT || 3000;
 
 app.get("/categories", async (req, res) => {
-  const categories = await prisma.category.findMany();
-  res.json(categories);
+  try {
+    const categories = await prisma.category.findMany();
+    res.json(categories);
+  } catch (error) {
+    console.error("Error fetching categories:", error);
+    res.status(500).json({ error: "Internal server error", message: error.message });
+  }
 });
 
 const { Prisma } = require("@prisma/client");
@@ -56,7 +61,7 @@ app.get("/providers", async (req, res) => {
     res.json(providers);
   } catch (error) {
     console.error("Error fetching providers:", error);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: "Internal server error", message: error.message, stack: error.stack });
   }
 });
 
