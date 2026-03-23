@@ -4,6 +4,7 @@ const cors = require("cors");
 const prisma = require("./prismaClient");
 const cloudinary = require("./cloudinary");
 const upload = require("./upload");
+const { createProviderSchema, updateProviderSchema, createCategorySchema } = require("./validations");
 
 const app = express();
 app.use(cors());
@@ -18,6 +19,41 @@ app.get("/categories", async (req, res) => {
   } catch (error) {
     console.error("Error fetching categories:", error);
     res.status(500).json({ error: "Internal server error", message: error.message });
+  }
+});
+
+app.post("/categories", async (req, res) => {
+  try {
+    const data = createCategorySchema.parse(req.body);
+    const category = await prisma.category.create({
+      data: {
+        nameFr: data.nameFr,
+        nameAr: data.nameAr,
+      },
+    });
+    res.json(category);
+  } catch (error) {
+    if (error.name === "ZodError") {
+      return res.status(400).json({ error: "Validation error", issues: error.issues });
+    }
+    console.error("Error creating category:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.delete("/categories/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    await prisma.category.delete({
+      where: { id: parseInt(id) },
+    });
+    res.json({ message: "Category deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting category:", error);
+    if (error.code === "P2025") {
+      return res.status(404).json({ error: "Category not found" });
+    }
+    res.status(500).json({ error: "Failed to delete category", message: error.message });
   }
 });
 
@@ -37,7 +73,7 @@ app.get("/providers", async (req, res) => {
       // Using Haversine formula to calculate distance in SQL
       // 6371 is the earth radius in km
       providers = await prisma.$queryRaw`
-        SELECT p.*, c.name as "categoryName",
+        SELECT p.*, c."nameFr" as "categoryNameFr", c."nameAr" as "categoryNameAr",
         (6371 * acos(cos(radians(${latitude})) * cos(radians(p.latitude)) * cos(radians(p.longitude) - radians(${longitude})) + sin(radians(${latitude})) * sin(radians(p.latitude)))) AS distance
         FROM "Provider" p
         LEFT JOIN "Category" c ON p."categoryId" = c.id
@@ -67,8 +103,8 @@ app.get("/providers", async (req, res) => {
 
 app.post("/providers", upload.single("photo"), async (req, res) => {
   try {
-    const data = req.body;
-    let photoUrl = data.photoUrl || null;
+    const data = createProviderSchema.parse(req.body);
+    let photo = req.body.photo || null;
 
     // If a file was uploaded, send it to Cloudinary
     if (req.file) {
@@ -89,28 +125,99 @@ app.post("/providers", upload.single("photo"), async (req, res) => {
         );
         stream.end(req.file.buffer);
       });
-      photoUrl = result.secure_url;
+      photo = result.secure_url;
     }
 
     const provider = await prisma.provider.create({
       data: {
-        name: data.name,
+        firstnameFr: data.firstnameFr,
+        lastnameFr: data.lastnameFr,
+        firstnameAr: data.firstnameAr,
+        lastnameAr: data.lastnameAr,
         phone: data.phone,
-        description: data.description || null,
+        descriptionFr: data.descriptionFr,
+        descriptionAr: data.descriptionAr,
         latitude: parseFloat(data.latitude),
         longitude: parseFloat(data.longitude),
-        photoUrl,
+        photo,
         categoryId: parseInt(data.categoryId),
+        rating: data.rating,
+        age: data.age || null,
       },
     });
 
     res.json(provider);
   } catch (error) {
+    if (error.name === "ZodError") {
+      return res.status(400).json({ error: "Validation error", issues: error.issues });
+    }
     if (error.code === "P2002" && error.meta?.target?.includes("phone")) {
       return res.status(400).json({ error: "A provider with this phone number already exists." });
     }
     console.error("Error creating provider:", error);
     res.status(500).json({ error: "Failed to create provider" });
+  }
+});
+
+app.patch("/providers/:id", upload.single("photo"), async (req, res) => {
+  const { id } = req.params;
+  try {
+    const data = updateProviderSchema.parse(req.body);
+    let photo = req.body.photo; // undefined means it won't be updated
+
+    if (req.file) {
+      const result = await new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          { 
+            folder: "providers",
+            transformation: [
+              { width: 200, height: 200, crop: "limit" },
+              { quality: "auto" },
+              { fetch_format: "auto" }
+            ]
+          },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          }
+        );
+        stream.end(req.file.buffer);
+      });
+      photo = result.secure_url;
+    }
+
+    const provider = await prisma.provider.update({
+      where: { id: parseInt(id) },
+      data: {
+        ...(data.firstnameFr && { firstnameFr: data.firstnameFr }),
+        ...(data.lastnameFr && { lastnameFr: data.lastnameFr }),
+        ...(data.firstnameAr && { firstnameAr: data.firstnameAr }),
+        ...(data.lastnameAr && { lastnameAr: data.lastnameAr }),
+        ...(data.phone && { phone: data.phone }),
+        ...(data.descriptionFr && { descriptionFr: data.descriptionFr }),
+        ...(data.descriptionAr && { descriptionAr: data.descriptionAr }),
+        ...(data.latitude && { latitude: parseFloat(data.latitude) }),
+        ...(data.longitude && { longitude: parseFloat(data.longitude) }),
+        ...(photo && { photo }),
+        ...(data.categoryId && { categoryId: parseInt(data.categoryId) }),
+        ...(data.rating && { rating: data.rating }),
+        ...(data.age !== undefined && { age: data.age }),
+      },
+    });
+
+    res.json(provider);
+  } catch (error) {
+    if (error.name === "ZodError") {
+      return res.status(400).json({ error: "Validation error", issues: error.issues });
+    }
+    if (error.code === "P2025") {
+      return res.status(404).json({ error: "Provider not found" });
+    }
+    if (error.code === "P2002" && error.meta?.target?.includes("phone")) {
+      return res.status(400).json({ error: "A provider with this phone number already exists." });
+    }
+    console.error("Error updating provider:", error);
+    res.status(500).json({ error: "Failed to update provider" });
   }
 });
 
@@ -156,13 +263,19 @@ app.post("/providers/seed", async (req, res) => {
     const fullName = `${firstName} ${lastName}`;
 
     providers.push({
-      name: fullName,
+      firstnameFr: firstName,
+      lastnameFr: lastName,
+      firstnameAr: firstName + " Ar",
+      lastnameAr: lastName + " Ar",
       phone: `+2126${Math.floor(10000000 + Math.random() * 90000000)}`,
-      description: `Professional ${category.name} services provided by ${fullName}. Reliable and experienced.`,
+      descriptionFr: `Professional ${category.nameFr} services provided by ${fullName}. Reliable and experienced.`,
+      descriptionAr: `Services de ${category.nameAr} par ${fullName}.`,
       latitude: centerLat + latOffset,
       longitude: centerLng + lngOffset,
-      photoUrl,
+      photo: photoUrl,
       categoryId: category.id,
+      rating: Math.floor(Math.random() * 5) + 1,
+      age: Math.floor(Math.random() * 30) + 20,
       isActive: true
     });
   }
